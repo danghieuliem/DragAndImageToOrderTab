@@ -1,9 +1,40 @@
+// use channel
+var bc = null;
+
 /**
  *
- * @param {"move" | "close" | "init"} event
- * @param {{x: number, y: number} | undefined} data
+ * @param {{
+ *    data: {
+ *      x:number,
+ *      y:number
+ *    },
+ *    pointerBrowser:{
+ *      x:number,
+ *      y:number
+ *    }}} param
  */
-const messageBroadcast = (event, data) => {
+const message_receive = ({ data, pointerBrowser }) => {
+  console.log("message_receive");
+  const square = document.getElementById("square-image");
+  if (!data || !pointerBrowser) return;
+  const { x: sendX, y: sendY } = pointerBrowser;
+  const { screenX, screenY } = window;
+  square.style.left = `${data.x + sendX - screenX}px`;
+  square.style.top = `${data.y + sendY - screenY}px`;
+};
+
+/**
+ *
+ * @param {}
+ * @param {{
+ *    event: "move" | "close" | "init",
+ *    data: {x: number, y: number}
+ *    pointerBrowser: {x: number, y: number}
+ * }} data
+ */
+
+const messageBroadcast = ({ data }) => {
+  const { event, data: param, pointerBrowser } = data;
   const totalTabs = +localStorage.getItem("totalTabs") || 0;
   switch (event) {
     case "init":
@@ -12,62 +43,38 @@ const messageBroadcast = (event, data) => {
         document.getElementById("square-image").style.backgroundImage =
           "url(./images/hutao1.jpg)";
       }
-      return localStorage.setItem("totalTabs", totalTabs + 1);
+      localStorage.setItem("totalTabs", totalTabs + 1);
+      break;
     case "close":
       console.log("close");
-      return localStorage.setItem(
-        "totalTabs",
-        totalTabs === 0 ? 0 : totalTabs - 1
-      );
+      localStorage.setItem("totalTabs", totalTabs === 0 ? 0 : totalTabs - 1);
+      break;
   }
-  localStorage.setItem(
-    event,
-    JSON.stringify({
-      data,
-      pointerBrowser: {
-        x: window.screenX,
-        y: window.screenY,
-      },
-    })
-  );
-  localStorage.removeItem(event);
+
+  message_receive({
+    data: param,
+    pointerBrowser,
+  });
 };
 
-/**
- *
- * @param {StorageEvent} e
- */
-const message_receive = (e) => {
-  console.log("move");
-
-  const square = document.getElementById("square-image");
-  const { data, pointerBrowser } = JSON.parse(e.newValue ?? "{}");
-  if (!data || !pointerBrowser) return;
-  const { x: sendX, y: sendY } = pointerBrowser;
-  const { screenX, screenY } = window;
-  square.style.left = `${data.x + sendX - screenX}px`;
-  square.style.top = `${data.y + sendY - screenY}px`;
-};
-
-window.addEventListener("storage", message_receive);
-
-window.onload = (e) => {
-  const container = document.querySelector("#square-image");
-  messageBroadcast("init");
-
-  messageBroadcast("move", {
-    x: window.screenX,
-    y: window.screenY,
+window.onload = () => {
+  !bc && (bc = new BroadcastChannel("channel-move-img"));
+  bc.onmessage = messageBroadcast;
+  bc.postMessage({
+    event: "init",
+    data: { x: 0, y: 0 },
+    pointerBrowser: { x: window.screenX, y: window.screenY },
   });
 
-  /**
-   *
+  const container = document.querySelector("#square-image");
+
+  /*
    * @param {{ movementX: number, movementY: number }} param
    */
   function onMouseDrag({ movementX, movementY }) {
-    let getContainerStyle = window.getComputedStyle(container);
-    let leftValue = (parseInt(getContainerStyle.left) || 0) + movementX;
-    let topValue = parseInt(getContainerStyle.top) + 0 + movementY;
+    const getContainerStyle = window.getComputedStyle(container);
+    const leftValue = (parseInt(getContainerStyle.left) || 0) + movementX;
+    const topValue = parseInt(getContainerStyle.top) + 0 + movementY;
 
     container.style.left = `${leftValue}px`;
     container.style.top = `${topValue}px`;
@@ -76,7 +83,11 @@ window.onload = (e) => {
       x: leftValue,
       y: topValue,
     };
-    messageBroadcast("move", data);
+    bc.postMessage({
+      event: "move",
+      data,
+      pointerBrowser: { x: window.screenX, y: window.screenY },
+    });
   }
 
   container.addEventListener("mousedown", () => {
@@ -88,4 +99,4 @@ window.onload = (e) => {
   });
 };
 
-window.addEventListener("beforeunload", () => messageBroadcast("close"));
+window.addEventListener("beforeunload", () => bc.close());
